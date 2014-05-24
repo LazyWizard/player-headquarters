@@ -15,7 +15,6 @@ class PlayerHQScript implements EveryFrameScript
     PlayerHQScript(OrbitalStationAPI station)
     {
         this.station = station;
-        PlayerHQ.getDataMap().put(Constants.STATION_ID, station);
     }
 
     InteractionDialogPlugin createDialog()

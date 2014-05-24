@@ -1,11 +1,17 @@
 package org.lazywizard.playerhq;
 
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.InteractionDialogImageVisual;
 import com.fs.starfarer.api.campaign.CampaignFleetAPI;
+import com.fs.starfarer.api.campaign.CargoAPI;
+import com.fs.starfarer.api.campaign.CoreInteractionListener;
+import com.fs.starfarer.api.campaign.CoreUITabId;
+import com.fs.starfarer.api.campaign.FactionAPI;
 import com.fs.starfarer.api.campaign.InteractionDialogAPI;
 import com.fs.starfarer.api.campaign.InteractionDialogPlugin;
 import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.OptionPanelAPI;
+import com.fs.starfarer.api.campaign.OrbitAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.TextPanelAPI;
 import com.fs.starfarer.api.combat.BattleCreationContext;
@@ -14,8 +20,10 @@ import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.fleet.RepairTrackerAPI;
 import java.awt.Color;
+import org.lazywizard.lazylib.campaign.CargoUtils;
+import org.lwjgl.util.vector.Vector2f;
 
-class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
+class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreInteractionListener
 {
     private InteractionDialogAPI dialog;
     private TextPanelAPI text;
@@ -32,6 +40,7 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
     {
         MENU_MAIN,
         MENU_SIM,
+        STORAGE,
         SIM_TEST_VS_PIRATES_ARMADA,
         SIM_TEST_VS_HEGEMONY_SDF,
         SIM_TEST_VS_TRITACHYON_DETACHMENT,
@@ -115,6 +124,7 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
         switch (menu)
         {
             case MAIN:
+                options.addOption("Cargo", Option.STORAGE);
                 options.addOption("Simulation battles", Option.MENU_SIM);
                 options.addOption("Leave", Option.LEAVE);
                 dialog.setPromptText("Choose an option:");
@@ -151,6 +161,10 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
                     break;
                 case MENU_SIM:
                     goToMenu(Menu.SIM_LIST);
+                    break;
+                case STORAGE:
+                    dialog.getVisualPanel().showCore(CoreUITabId.CARGO,
+                            new CargoToken(), this);
                     break;
                 case SIM_TEST_VS_PIRATES_ARMADA:
                     testSimBattle("pirates", "armada");
@@ -190,5 +204,121 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
     public Object getContext()
     {
         return null;
+    }
+
+    @Override
+    public void coreUIDismissed()
+    {
+    }
+
+    private class CargoToken implements SectorEntityToken
+    {
+        @Override
+        public CargoAPI getCargo()
+        {
+            CargoAPI cargo = PlayerHQ.getCargo();
+            CargoUtils.moveCargo(station.getCargo(), cargo);
+
+            // TODO: Replace code below with this once LazyLib 1.9 is released
+            //CargoUtils.moveShips(station.getCargo(), cargo);
+
+            for (FleetMemberAPI tmp : station.getCargo().getMothballedShips().getMembersListCopy())
+            {
+                cargo.getMothballedShips().addFleetMember(tmp);
+            }
+
+            station.getCargo().getMothballedShips().clear();
+            return cargo;
+        }
+
+        @Override
+        public Vector2f getLocation()
+        {
+            return station.getLocation();
+        }
+
+        @Override
+        public OrbitAPI getOrbit()
+        {
+            return station.getOrbit();
+        }
+
+        @Override
+        public void setOrbit(OrbitAPI orbit)
+        {
+            station.setOrbit(orbit);
+        }
+
+        @Override
+        public Object getName()
+        {
+            return station.getName();
+        }
+
+        @Override
+        public String getFullName()
+        {
+            return station.getFullName();
+        }
+
+        @Override
+        public void setFaction(String factionId)
+        {
+            station.setFaction(factionId);
+        }
+
+        @Override
+        public LocationAPI getContainingLocation()
+        {
+            return station.getContainingLocation();
+        }
+
+        @Override
+        public float getRadius()
+        {
+            return station.getRadius();
+        }
+
+        @Override
+        public FactionAPI getFaction()
+        {
+            return station.getFaction();
+        }
+
+        @Override
+        public String getCustomDescriptionId()
+        {
+            return station.getCustomDescriptionId();
+        }
+
+        @Override
+        public void setCustomDescriptionId(String customDescriptionId)
+        {
+            station.setCustomDescriptionId(customDescriptionId);
+        }
+
+        @Override
+        public void setCustomInteractionDialogImageVisual(InteractionDialogImageVisual visual)
+        {
+            station.setCustomInteractionDialogImageVisual(visual);
+        }
+
+        @Override
+        public InteractionDialogImageVisual getCustomInteractionDialogImageVisual()
+        {
+            return station.getCustomInteractionDialogImageVisual();
+        }
+
+        @Override
+        public void setFreeTransfer(boolean freeTransfer)
+        {
+            station.setFreeTransfer(freeTransfer);
+        }
+
+        @Override
+        public boolean isFreeTransfer()
+        {
+            return true;
+        }
     }
 }
