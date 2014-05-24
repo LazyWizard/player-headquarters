@@ -1,6 +1,7 @@
 package org.lazywizard.playerhq;
 
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.campaign.CargoAPI;
 import com.fs.starfarer.api.campaign.OrbitalStationAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
 import java.util.LinkedHashMap;
@@ -14,6 +15,7 @@ public class PlayerHQ
         PlayerHQScript playerHQ = new PlayerHQScript(station);
         // TODO: Register modules
         station.getContainingLocation().addScript(playerHQ);
+        getDataMap().put(Constants.STATION_ID, station);
     }
 
     public static OrbitalStationAPI getHeadquarters()
@@ -25,6 +27,20 @@ public class PlayerHQ
     {
         return (token instanceof OrbitalStationAPI)
                 && (token == getDataMap().get(Constants.STATION_ID));
+    }
+
+    public static CargoAPI getCargo()
+    {
+        Map<String, Object> data = getDataMap();
+        if (!data.containsKey(Constants.CARGO_ID))
+        {
+            CargoAPI storage = Global.getFactory().createCargo(true);
+            storage.initMothballedShips("player");
+            data.put(Constants.CARGO_ID, storage);
+            return storage;
+        }
+
+        return (CargoAPI) data.get(Constants.CARGO_ID);
     }
 
     static Map<String, Object> getDataMap()
