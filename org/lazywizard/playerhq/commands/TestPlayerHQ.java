@@ -6,10 +6,13 @@ import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.InteractionDialogAPI;
 import com.fs.starfarer.api.campaign.InteractionDialogPlugin;
 import com.fs.starfarer.api.campaign.LocationAPI;
+import com.fs.starfarer.api.campaign.OptionPanelAPI;
+import com.fs.starfarer.api.campaign.TextPanelAPI;
 import com.fs.starfarer.api.combat.BattleCreationContext;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.fleet.RepairTrackerAPI;
 import java.awt.Color;
 import org.lazywizard.console.BaseCommand;
 import org.lazywizard.console.CommonStrings;
@@ -60,49 +63,59 @@ public class TestPlayerHQ implements BaseCommand
     private static class TestPlayerHQInteractionDialogPlugin implements InteractionDialogPlugin
     {
         private InteractionDialogAPI dialog;
+        private TextPanelAPI text;
+        private OptionPanelAPI options;
 
-        private enum Options
+        private enum Menu
         {
-            TEST_VS_PIRATES_ARMADA,
-            TEST_VS_HEGEMONY_SDF,
-            TEST_VS_TRITACHYON_DETACHMENT,
-            TEST_VS_CUSTOM_FLEET,
+            MAIN,
+            SIM
+        }
+
+        private enum Option
+        {
+            MENU_MAIN,
+            MENU_SIM,
+            SIM_TEST_VS_PIRATES_ARMADA,
+            SIM_TEST_VS_HEGEMONY_SDF,
+            SIM_TEST_VS_TRITACHYON_DETACHMENT,
+            SIM_TEST_VS_CUSTOM_FLEET,
             LEAVE
         }
 
-        private CampaignFleetAPI copyFleet(CampaignFleetAPI other)
+        // TODO: Copy commander stat bonuses
+        private CampaignFleetAPI copyFleet(CampaignFleetAPI toCopy)
         {
             // Spawn a dummy fleet
             CampaignFleetAPI fleet = Global.getSector().createFleet(
                     "playerhq", "simFleet");
-            fleet.getCommanderStats().getLogistics().modifyFlat("lw", 999f);
-            fleet.getCargo().addSupplies(other.getTotalSupplyCostPerDay());
-
-            // Remove existing ships (only there for initial stats/cargo)
-            for (FleetMemberAPI ship : fleet.getFleetData().getMembersListCopy())
-            {
-                fleet.getFleetData().removeFleetMember(ship);
-            }
+            fleet.getFleetData().clear();
+            fleet.getCommanderStats().getLogistics().modifyFlat("lw_simbonus", 999f);
+            fleet.getCargo().addSupplies(toCopy.getTotalSupplyCostPerDay() * 5f);
 
             // Add a copy of all ships in the fleet
-            for (FleetMemberAPI ship : other.getFleetData().getCombatReadyMembersListCopy())
+            for (FleetMemberAPI tmp : toCopy.getFleetData().getMembersListCopy())
             {
                 // Create a copy of the ship
-                FleetMemberAPI tmp = Global.getFactory().createFleetMember(
-                        ship.getType(), ship.getSpecId());
-                fleet.getFleetData().addFleetMember(tmp);
+                FleetMemberAPI ship = Global.getFactory().createFleetMember(
+                        tmp.getType(), tmp.getSpecId());
+                fleet.getFleetData().addFleetMember(ship);
 
                 // Copy stats over
-                tmp.getRepairTracker().setMothballed(false);
-                tmp.getCrewComposition().addAll(ship.getCrewComposition());
-                tmp.getRepairTracker().setCR(ship.getRepairTracker().getCR());
-                tmp.setShipName(ship.getShipName());
-                tmp.setCaptain(ship.getCaptain());
+                // TODO: Copy stat bonuses as well
+                RepairTrackerAPI status = ship.getRepairTracker(),
+                        tmpStatus = tmp.getRepairTracker();
+                ship.getCrewComposition().addAll(tmp.getCrewComposition());
+                status.setMothballed(tmpStatus.isMothballed());
+                status.setCR(tmpStatus.getCR());
+                status.setLogisticalPriority(tmpStatus.isLogisticalPriority());
+                ship.setShipName(tmp.getShipName());
+                ship.setCaptain(tmp.getCaptain());
 
-                // Make sure flagship is retained
-                if (ship.isFlagship())
+                // Make sure flagship status is retained
+                if (tmp.isFlagship())
                 {
-                    tmp.setFlagship(true);
+                    ship.setFlagship(true);
                 }
             }
 
@@ -111,13 +124,16 @@ public class TestPlayerHQ implements BaseCommand
 
         private void testSimBattle(String faction, String fleet)
         {
+            // Set up both sides of the simulation battle
             LocationAPI loc = Global.getSector().getCurrentLocation();
-            CampaignFleetAPI simPlayer = copyFleet(Global.getSector().getPlayerFleet());
-            loc.spawnFleet(loc.createToken(0f, 0f), 0f, 0f, simPlayer);
-            CampaignFleetAPI simEnemy = Global.getSector().createFleet(
-                    faction, fleet);
+            CampaignFleetAPI simPlayer = copyFleet(Global.getSector().getPlayerFleet()),
+                    simEnemy = Global.getSector().createFleet(faction, fleet);
             BattleCreationContext context = new BattleCreationContext(
                     simPlayer, FleetGoal.ATTACK, simEnemy, FleetGoal.ATTACK);
+
+            // Register the dummy player fleet and start the battle
+            loc.spawnFleet(loc.createToken(0f, 0f), 0f, 0f, simPlayer);
+            text.addParagraph("Starting battle vs " + simEnemy.getFullName() + ".");
             dialog.startBattle(context);
             loc.removeEntity(simPlayer);
         }
@@ -126,41 +142,70 @@ public class TestPlayerHQ implements BaseCommand
         public void init(InteractionDialogAPI dialog)
         {
             this.dialog = dialog;
+            text = dialog.getTextPanel();
+            options = dialog.getOptionPanel();
 
-            dialog.getOptionPanel().addOption("Sim: Player vs Pirate Armada",
-                    Options.TEST_VS_PIRATES_ARMADA);
-            dialog.getOptionPanel().addOption("Sim: Player vs Hegemony Defense Fleet",
-                    Options.TEST_VS_HEGEMONY_SDF);
-            dialog.getOptionPanel().addOption("Sim: Player vs Tri-Tachyon Security Detachment",
-                    Options.TEST_VS_TRITACHYON_DETACHMENT);
-            dialog.getOptionPanel().addOption("Sim: Player vs Custom Fleet",
-                    Options.TEST_VS_CUSTOM_FLEET);
-            dialog.getOptionPanel().addOption("Leave", Options.LEAVE);
-            dialog.setOptionOnEscape("Leave", Options.LEAVE);
+            goToMenu(Menu.MAIN);
+        }
+
+        private void goToMenu(Menu menu)
+        {
+            options.clearOptions();
+
+            switch (menu)
+            {
+                case MAIN:
+                    options.addOption("Sim battles", Option.MENU_SIM);
+                    options.addOption("Leave", Option.LEAVE);
+                    dialog.setPromptText("Choose an option:");
+                    dialog.setOptionOnEscape("Leave", Option.LEAVE);
+                    break;
+                case SIM:
+                    options.addOption("Sim: Player vs Pirate Armada",
+                            Option.SIM_TEST_VS_PIRATES_ARMADA);
+                    options.addOption("Sim: Player vs Hegemony Defense Fleet",
+                            Option.SIM_TEST_VS_HEGEMONY_SDF);
+                    options.addOption("Sim: Player vs Tri-Tachyon Security Detachment",
+                            Option.SIM_TEST_VS_TRITACHYON_DETACHMENT);
+                    options.addOption("Sim: Player vs Custom Fleet",
+                            Option.SIM_TEST_VS_CUSTOM_FLEET);
+                    options.addOption("Return to main menu",
+                            Option.MENU_MAIN);
+                    dialog.setPromptText("Choose a simulation to load:");
+                    dialog.setOptionOnEscape(null, Option.MENU_MAIN);
+                    break;
+                default:
+            }
         }
 
         @Override
         public void optionSelected(String optionText, Object optionData)
         {
-            if (optionData instanceof Options)
+            if (optionData instanceof Option)
             {
-                Options option = (Options) optionData;
+                Option option = (Option) optionData;
                 switch (option)
                 {
-                    case TEST_VS_PIRATES_ARMADA:
+                    case MENU_MAIN:
+                        goToMenu(Menu.MAIN);
+                        break;
+                    case MENU_SIM:
+                        goToMenu(Menu.SIM);
+                        break;
+                    case SIM_TEST_VS_PIRATES_ARMADA:
                         testSimBattle("pirates", "armada");
                         break;
-                    case TEST_VS_HEGEMONY_SDF:
+                    case SIM_TEST_VS_HEGEMONY_SDF:
                         testSimBattle("hegemony", "systemDefense");
                         break;
-                    case TEST_VS_TRITACHYON_DETACHMENT:
+                    case SIM_TEST_VS_TRITACHYON_DETACHMENT:
                         testSimBattle("tritachyon", "securityDetachment");
                         break;
                     case LEAVE:
                         dialog.dismiss();
                         break;
                     default:
-                        dialog.getTextPanel().addParagraph("This option is not implemented yet.", Color.RED);
+                        text.addParagraph("This option is not implemented yet.", Color.RED);
                 }
             }
         }
@@ -178,6 +223,7 @@ public class TestPlayerHQ implements BaseCommand
         @Override
         public void backFromEngagement(EngagementResultAPI battleResult)
         {
+            // TODO: Show detailed battle results and stats
         }
 
         @Override
