@@ -29,8 +29,9 @@ class PlayerHQCampaignPlugin extends BaseCampaignPlugin
                 && PlayerHQ.isHeadquarters(interactionTarget))
         {
             // TODO
-            //return new PluginPick<InteractionDialogPlugin>(
-            //        PlayerHQ.createDialog(interactionTarget), PickPriority.MOD_SPECIFIC);
+            return new PluginPick<InteractionDialogPlugin>(
+                    new PlayerHQInteractionDialogPlugin(interactionTarget), PickPriority.MOD_SPECIFIC);
+                    //PlayerHQ.createDialog(interactionTarget), PickPriority.MOD_SPECIFIC);
         }
 
         return null;
