@@ -6,13 +6,24 @@ import com.fs.starfarer.api.campaign.OrbitalStationAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.apache.log4j.Level;
 
 // Publicly accessible methods, also handles persistent data
 public class PlayerHQ
 {
     public static void createHeadquarters(OrbitalStationAPI station)
     {
+        // Only one headquarters can exist in the game world
+        if (getHeadquarters() != null)
+        {
+            Global.getLogger(PlayerHQ.class).log(Level.ERROR, (isHeadquarters(station)
+                    ? "Tried to create headquarters multiple times!"
+                    : "Player headquarters already exists!"));
+            return;
+        }
+
         PlayerHQScript playerHQ = new PlayerHQScript(station);
+        station.setFreeTransfer(true);
         // TODO: Register modules
         station.getContainingLocation().addScript(playerHQ);
         getDataMap().put(Constants.STATION_ID, station);
