@@ -2,6 +2,7 @@ package org.lazywizard.playerhq;
 
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.InteractionDialogImageVisual;
+import com.fs.starfarer.api.Script;
 import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.CargoAPI;
 import com.fs.starfarer.api.campaign.CoreInteractionListener;
@@ -25,22 +26,26 @@ import org.lwjgl.util.vector.Vector2f;
 
 class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreInteractionListener
 {
+    private Menu currentMenu;
     private InteractionDialogAPI dialog;
     private TextPanelAPI text;
     private OptionPanelAPI options;
     private final SectorEntityToken station;
+    private DelayedScript waitScript = null;
 
     private enum Menu
     {
         MAIN,
-        SIM_LIST
+        SIM_LIST,
+        WAITING
     }
 
     private enum Option
     {
         MENU_MAIN,
-        MENU_SIM,
+        MENU_SIM_LIST,
         STORAGE,
+        REPAIR,
         SIM_TEST_VS_PIRATES_ARMADA,
         SIM_TEST_VS_HEGEMONY_SDF,
         SIM_TEST_VS_TRITACHYON_DETACHMENT,
@@ -53,7 +58,13 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
         this.station = station;
     }
 
-    // TODO: Copy commander stat bonuses
+    private void waitFor(float duration, Script runWhenDone)
+    {
+        goToMenu(Menu.WAITING);
+        waitScript = new DelayedScript(runWhenDone, duration);
+    }
+
+    // TODO: Copy commander stat bonuses if setCaptain() doesn't transfer them
     private CampaignFleetAPI copyFleet(CampaignFleetAPI toCopy)
     {
         // Spawn a dummy fleet
@@ -94,17 +105,26 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
     private void testSimBattle(String faction, String fleet)
     {
         // Set up both sides of the simulation battle
-        LocationAPI loc = Global.getSector().getCurrentLocation();
-        CampaignFleetAPI simPlayer = copyFleet(Global.getSector().getPlayerFleet()),
+        final LocationAPI loc = Global.getSector().getCurrentLocation();
+        final CampaignFleetAPI simPlayer = copyFleet(Global.getSector().getPlayerFleet()),
                 simEnemy = Global.getSector().createFleet(faction, fleet);
-        BattleCreationContext context = new BattleCreationContext(
+        final BattleCreationContext context = new BattleCreationContext(
                 simPlayer, FleetGoal.ATTACK, simEnemy, FleetGoal.ATTACK);
 
         // Register the dummy player fleet and start the battle
         loc.spawnFleet(loc.createToken(0f, 0f), 0f, 0f, simPlayer);
-        text.addParagraph("Starting battle vs " + simEnemy.getFullName() + ".");
-        dialog.startBattle(context);
-        loc.removeEntity(simPlayer);
+        text.addParagraph("Starting battle vs " + simEnemy.getFullName() + "...");
+        dialog.flickerStatic(3f, 1f);
+
+        waitFor(3f, new Script()
+        {
+            @Override
+            public void run()
+            {
+                dialog.startBattle(context);
+                loc.removeEntity(simPlayer);
+            }
+        });
     }
 
     @Override
@@ -119,13 +139,16 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
 
     private void goToMenu(Menu menu)
     {
+        currentMenu = menu;
         options.clearOptions();
 
         switch (menu)
         {
             case MAIN:
                 options.addOption("Cargo", Option.STORAGE);
-                options.addOption("Simulation battles", Option.MENU_SIM);
+                options.addOption("Simulation battles", Option.MENU_SIM_LIST);
+                options.addOption("Repair fleet", Option.REPAIR);
+                options.setEnabled(Option.REPAIR, false);
                 options.addOption("Leave", Option.LEAVE);
                 dialog.setPromptText("Choose an option:");
                 dialog.setOptionOnEscape("Leave", Option.LEAVE);
@@ -139,11 +162,15 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
                         Option.SIM_TEST_VS_TRITACHYON_DETACHMENT);
                 options.addOption("Sim: Player vs Custom Fleet",
                         Option.SIM_TEST_VS_CUSTOM_FLEET);
+                options.setEnabled(Option.SIM_TEST_VS_CUSTOM_FLEET, false);
                 options.addOption("Return to main menu",
                         Option.MENU_MAIN);
                 dialog.setPromptText("Choose a simulation to load:");
                 dialog.setOptionOnEscape(null, Option.MENU_MAIN);
                 break;
+            case WAITING:
+                dialog.setPromptText("LOADING...");
+                dialog.setOptionOnEscape(null, null);
             default:
         }
     }
@@ -159,12 +186,12 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
                 case MENU_MAIN:
                     goToMenu(Menu.MAIN);
                     break;
-                case MENU_SIM:
+                case MENU_SIM_LIST:
                     goToMenu(Menu.SIM_LIST);
                     break;
                 case STORAGE:
-                    dialog.getVisualPanel().showCore(CoreUITabId.CARGO,
-                            new CargoToken(), this);
+                    dialog.getVisualPanel().showCore(
+                            CoreUITabId.CARGO, new CargoToken(), this);
                     break;
                 case SIM_TEST_VS_PIRATES_ARMADA:
                     testSimBattle("pirates", "armada");
@@ -192,11 +219,20 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
     @Override
     public void advance(float amount)
     {
+        if (waitScript != null)
+        {
+            waitScript.advance(amount);
+            if (waitScript.isElapsed)
+            {
+                waitScript = null;
+            }
+        }
     }
 
     @Override
     public void backFromEngagement(EngagementResultAPI battleResult)
     {
+        goToMenu(Menu.SIM_LIST);
         // TODO: Show detailed battle results and stats
     }
 
@@ -211,6 +247,7 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
     {
     }
 
+    // Nothing like writing an entire dummy implementation because setCargo() doesn't exist
     private class CargoToken implements SectorEntityToken
     {
         @Override
@@ -218,16 +255,7 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
         {
             CargoAPI cargo = PlayerHQ.getCargo();
             CargoUtils.moveCargo(station.getCargo(), cargo);
-
-            // TODO: Replace code below with this once LazyLib 1.9 is released
-            //CargoUtils.moveShips(station.getCargo(), cargo);
-
-            for (FleetMemberAPI tmp : station.getCargo().getMothballedShips().getMembersListCopy())
-            {
-                cargo.getMothballedShips().addFleetMember(tmp);
-            }
-
-            station.getCargo().getMothballedShips().clear();
+            CargoUtils.moveMothballedShips(station.getCargo(), cargo);
             return cargo;
         }
 
@@ -318,7 +346,35 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
         @Override
         public boolean isFreeTransfer()
         {
-            return true;
+            return station.isFreeTransfer();
+        }
+    }
+
+    private class DelayedScript
+    {
+        private final Script script;
+        private boolean isElapsed = false;
+        private float countdown;
+
+        private DelayedScript(Script script, float countdown)
+        {
+            this.script = script;
+            this.countdown = countdown;
+        }
+
+        private void advance(float amount)
+        {
+            if (isElapsed)
+            {
+                return;
+            }
+
+            countdown -= amount;
+            if (countdown <= 0f)
+            {
+                isElapsed = true;
+                script.run();
+            }
         }
     }
 }
