@@ -37,6 +37,7 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
     {
         MAIN,
         SIM_LIST,
+        SIM_BUILD_CUSTOM_FLEET,
         WAITING
     }
 

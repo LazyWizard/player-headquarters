@@ -1,11 +1,18 @@
 package org.lazywizard.playerhq;
 
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.CargoAPI;
 import com.fs.starfarer.api.campaign.OrbitalStationAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.combat.ShipVariantAPI;
+import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.log4j.Level;
 
 // Publicly accessible methods, also handles persistent data
@@ -54,6 +61,19 @@ public class PlayerHQ
         return (CargoAPI) data.get(Constants.CARGO_ID);
     }
 
+    public static Set<String> getKnownSimOpponents()
+    {
+        Map<String, Object> data = getDataMap();
+        if (!data.containsKey(Constants.SIM_LIST))
+        {
+            Set<String> simList = new HashSet<>();
+            data.put(Constants.SIM_LIST, simList);
+            return simList;
+        }
+
+        return (Set<String>) data.get(Constants.SIM_LIST);
+    }
+
     static Map<String, Object> getDataMap()
     {
         Map<String, Object> persistentData, dataMap;
@@ -71,9 +91,33 @@ public class PlayerHQ
         return dataMap;
     }
 
-    static void checkForNewSimOpponents(SectorEntityToken opponent)
+    static List<ShipVariantAPI> checkForNewSimOpponents(CampaignFleetAPI opponent)
     {
+        List<ShipVariantAPI> newOpponents = new ArrayList<>();
+        Set<String> knownOpponents = getKnownSimOpponents();
+
         // TODO: Keep track of all opponents faced for custom 'simulation' battles
+        for (FleetMemberAPI member : opponent.getFleetData().getCombatReadyMembersListCopy())
+        {
+            // TODO: Add fighter wing support
+            if (member.isFighterWing())
+            {
+                continue;
+            }
+
+            ShipVariantAPI variant = member.getVariant();
+            String variantId = variant.getHullVariantId();
+            if (knownOpponents.contains(variantId))
+            {
+                continue;
+            }
+
+            System.out.println("New variant found: " + variantId);
+            newOpponents.add(variant);
+            knownOpponents.add(variantId);
+        }
+
+        return newOpponents;
     }
 
     private PlayerHQ()
