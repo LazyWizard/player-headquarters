@@ -21,6 +21,7 @@ import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.fleet.RepairTrackerAPI;
 import java.awt.Color;
+import org.lazywizard.lazylib.CollectionUtils;
 import org.lazywizard.lazylib.campaign.CargoUtils;
 import org.lwjgl.util.vector.Vector2f;
 
@@ -163,16 +164,26 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
                         Option.SIM_TEST_VS_TRITACHYON_DETACHMENT);
                 options.addOption("Sim: Player vs Custom Fleet",
                         Option.SIM_TEST_VS_CUSTOM_FLEET);
-                options.setEnabled(Option.SIM_TEST_VS_CUSTOM_FLEET, false);
                 options.addOption("Return to main menu",
                         Option.MENU_MAIN);
                 dialog.setPromptText("Choose a simulation to load:");
                 dialog.setOptionOnEscape(null, Option.MENU_MAIN);
                 break;
+            case SIM_BUILD_CUSTOM_FLEET:
+                // TODO
+                text.addParagraph("Known sim opponents: " + CollectionUtils.implode(
+                        PlayerHQ.getKnownSimOpponents()), Color.LIGHT_GRAY);
+                options.addOption("Return to simulation list",
+                        Option.MENU_SIM_LIST);
+                break;
             case WAITING:
                 dialog.setPromptText("LOADING...");
                 dialog.setOptionOnEscape(null, null);
             default:
+                text.addParagraph("This menu is not implemented yet.", Color.RED);
+                dialog.setPromptText("Choose an option:");
+                options.addOption("Return to main menu",
+                        Option.MENU_MAIN);
         }
     }
 
@@ -202,6 +213,9 @@ class PlayerHQInteractionDialogPlugin implements InteractionDialogPlugin, CoreIn
                     break;
                 case SIM_TEST_VS_TRITACHYON_DETACHMENT:
                     testSimBattle("tritachyon", "securityDetachment");
+                    break;
+                case SIM_TEST_VS_CUSTOM_FLEET:
+                    goToMenu(Menu.SIM_BUILD_CUSTOM_FLEET);
                     break;
                 case LEAVE:
                     dialog.dismiss();

@@ -43,7 +43,7 @@ class PlayerHQCampaignPlugin extends BaseCampaignPlugin
         {
             PlayerHQ.checkForNewSimOpponents((CampaignFleetAPI) opponent);
         }
-        
+
         return null;
     }
 
