@@ -5,15 +5,14 @@ import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.CargoAPI;
 import com.fs.starfarer.api.campaign.OrbitalStationAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.combat.ShipAPI.HullSize;
 import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import org.apache.log4j.Level;
 
 // Publicly accessible methods, also handles persistent data
 public class PlayerHQ
@@ -23,10 +22,9 @@ public class PlayerHQ
         // Only one headquarters can exist in the game world
         if (getHeadquarters() != null)
         {
-            Global.getLogger(PlayerHQ.class).log(Level.ERROR, (isHeadquarters(station)
+            throw new RuntimeException(isHeadquarters(station)
                     ? "Tried to create headquarters multiple times!"
-                    : "Player headquarters already exists!"));
-            return;
+                    : "Player headquarters already exists!");
         }
 
         PlayerHQScript playerHQ = new PlayerHQScript(station);
@@ -61,17 +59,22 @@ public class PlayerHQ
         return (CargoAPI) data.get(Constants.CARGO_ID);
     }
 
-    public static Set<String> getKnownSimOpponents()
+    public static List<String> getKnownSimOpponents()
+    {
+        return new ArrayList<>(getSimData().keySet());
+    }
+
+    static Map<String, HullSize> getSimData()
     {
         Map<String, Object> data = getDataMap();
         if (!data.containsKey(Constants.SIM_LIST))
         {
-            Set<String> simList = new HashSet<>();
+            Map<String, HullSize> simList = new HashMap<>();
             data.put(Constants.SIM_LIST, simList);
             return simList;
         }
 
-        return (Set<String>) data.get(Constants.SIM_LIST);
+        return (Map<String, HullSize>) data.get(Constants.SIM_LIST);
     }
 
     static Map<String, Object> getDataMap()
@@ -94,27 +97,23 @@ public class PlayerHQ
     static List<ShipVariantAPI> checkForNewSimOpponents(CampaignFleetAPI opponent)
     {
         List<ShipVariantAPI> newOpponents = new ArrayList<>();
-        Set<String> knownOpponents = getKnownSimOpponents();
+        Map<String, HullSize> knownOpponents = getSimData();
 
         // TODO: Keep track of all opponents faced for custom 'simulation' battles
         for (FleetMemberAPI member : opponent.getFleetData().getCombatReadyMembersListCopy())
         {
-            // TODO: Add fighter wing support
-            if (member.isFighterWing())
+            String variantId = member.getSpecId();
+
+            // Variant is already in known opponents list
+            if (knownOpponents.containsKey(variantId))
             {
                 continue;
             }
 
-            ShipVariantAPI variant = member.getVariant();
-            String variantId = variant.getHullVariantId();
-            if (knownOpponents.contains(variantId))
-            {
-                continue;
-            }
-
-            System.out.println("New variant found: " + variantId);
-            newOpponents.add(variant);
-            knownOpponents.add(variantId);
+            System.out.println("New variant found: " + variantId
+                    + " (" + member.getHullSpec().getHullSize().name() + ")");
+            newOpponents.add(member.getVariant());
+            knownOpponents.put(variantId, member.getHullSpec().getHullSize());
         }
 
         return newOpponents;
